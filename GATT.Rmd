@@ -1,0 +1,91 @@
+---
+title: "Do We Really Know the WTO Increases Trade?"
+output: html_notebook
+---
+
+This note reproduce the results of paper "Do We Really Know the WTO Increases Trade?" by ANDREW K. ROSE.
+
+Data is provided by the author at http://faculty.haas.berkeley.edu/arose/RecRes.htm.
+
+## Read In Data
+```{r}
+library(haven)
+data4web <- read_dta("./data4web.dta")
+```
+
+```{r}
+head(data4web)
+```
+
+## Correlation
+```{r}
+data4web_corr <- cor(data4web[c("ltrade", "ldist", "lrgdp", "lrgdppc", "comlang", "border", "landl", "island", "lareap", "comcol", "curcol", "colony", "comctry", "custrict", "regional", "bothin", "onein", "gsp")], method = "pearson")
+corrplot(data4web_corr)
+```
+The key GATT/WTO and GSP variables are not highly correlated with most of the gravity variables. The only exception is the GSP dummy, which is positively correlated with both real GDP variables, as one might expect (given that richer countries are those that extend the GSP concessions). In other words, multicollinearity is not a problem for the coefficients of interest.
+
+## Regression
+$$
+\begin{aligned}
+\ln \left(X_{i j t}\right)=& \beta_{0}+\beta_{1} \ln D_{i j}+\beta_{2} \ln \left(Y_{i} Y_{j}\right)_{t} \\
+&+\beta_{3} \ln \left(Y_{i} Y_{j} / P o p_{i} P o p_{j}\right)_{t}+\beta_{4} Lang_{i j} \\
+&+\beta_{5} Cont_{i j}+\beta_{6} L a n d l_{i j}+\beta_{7} I s l a n d_{i j} \\
+&+\beta_{8} \ln \left(A r e a_{i} A r e a_{j}\right)+\beta_{9} C o m C o l_{i j} \\
+&+\beta_{10} C u r C o l_{i j t}+\beta_{11} C o l o n y_{i j} \\
+&+\beta_{12} C o m N a t_{i j}+\beta_{13} C U_{i j t} \\
+&+\beta_{14} F T A_{i j t}+\Sigma_{t} \phi_{t} T_{t}+\gamma_{1} B o t h i n_{i j t} \\
+&+\gamma_{2} O n e i n_{i j t}+\gamma_{3} G S P_{i j t}+\varepsilon_{i j t}
+\end{aligned}
+$$
+```{r}
+library(plm)
+pdata4web <- pdata.frame(data4web, index = c("pairid", "year"))
+```
+
+Pooled Regression Model:
+```{r}
+gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data=pdata4web, model = "pooling")
+summary(gravityMod)
+```
+
+## BenchMark
+
+Use the augmented gravity model, estimated with ordinary least squares, year fixed effects, and robust standard errors over the full sample.
+```{r}
+library(estimatr)
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, fixed_effects = ~ year)
+summary(gravityMod)
+```
+
+### Robustness Check
+
+#### No Industrial Countries
+
+The IMF in defining countries as "industrial" if they have an IFS country code less than 200
+```{r}
+noIndustryData <- subset(data4web, cty1>=200 & cty2>=200,)
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = noIndustryData, fixed_effects = ~ year)
+summary(gravityMod)
+```
+
+#### Post 1970
+
+```{r}
+post1970Data <- subset(data4web, year > 1970,)
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = post1970Data, fixed_effects = ~ year)
+summary(gravityMod)
+```
+
+#### With Country Effects
+
+```{r}
+gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp + factor(year) + factor(cty1) + factor(cty2), data=data4web, index=c("pairid", "year"), model = "pooling")
+summary(gravityMod)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
