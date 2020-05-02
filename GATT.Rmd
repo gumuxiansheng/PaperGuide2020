@@ -9,17 +9,19 @@ Data is provided by the author at http://faculty.haas.berkeley.edu/arose/RecRes.
 
 ## Read In Data
 ```{r}
-library(haven)
 data4web <- read_dta("./data4web.dta")
 ```
 
 ```{r}
+print(colnames(data4web))
 head(data4web)
 ```
 
 ## Correlation
 ```{r}
+options(warn = -1)
 data4web_corr <- cor(data4web[c("ltrade", "ldist", "lrgdp", "lrgdppc", "comlang", "border", "landl", "island", "lareap", "comcol", "curcol", "colony", "comctry", "custrict", "regional", "bothin", "onein", "gsp")], method = "pearson")
+library(corrplot)
 corrplot(data4web_corr)
 ```
 The key GATT/WTO and GSP variables are not highly correlated with most of the gravity variables. The only exception is the GSP dummy, which is positively correlated with both real GDP variables, as one might expect (given that richer countries are those that extend the GSP concessions). In other words, multicollinearity is not a problem for the coefficients of interest.
@@ -39,21 +41,26 @@ $$
 $$
 ```{r}
 library(plm)
-pdata4web <- pdata.frame(data4web, index = c("pairid", "year"))
-```
-
-Pooled Regression Model:
-```{r}
-gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data=pdata4web, model = "pooling")
-summary(gravityMod)
+library(lmtest)
+library(estimatr)
+library(nlme)
+library(prais)
 ```
 
 ## BenchMark
 
 Use the augmented gravity model, estimated with ordinary least squares, year fixed effects, and robust standard errors over the full sample.
+
 ```{r}
-library(estimatr)
-gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, fixed_effects = ~ year)
+gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data=data4web, index = c("pairid", "year"), effect = "time", model = "within")
+summary(gravityMod)
+coeftest(gravityMod, vcov=function(x) vcovHC(x, cluster="group"))
+```
+
+Below we use another R package to do the same thing:
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, clusters = pairid, fixed_effects = ~ year, se_type = "stata")
 summary(gravityMod)
 ```
 
@@ -61,31 +68,277 @@ summary(gravityMod)
 
 #### No Industrial Countries
 
-The IMF in defining countries as "industrial" if they have an IFS country code less than 200
+The IMF in defining countries as "industrial" if they have an IFS country code less than 200.
 ```{r}
-noIndustryData <- subset(data4web, cty1>=200 & cty2>=200,)
-gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = noIndustryData, fixed_effects = ~ year)
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = cty1>=200 & cty2>=200, clusters = pairid, fixed_effects = ~ year, se_type = "stata")
 summary(gravityMod)
 ```
 
 #### Post 1970
 
 ```{r}
-post1970Data <- subset(data4web, year > 1970,)
-gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = post1970Data, fixed_effects = ~ year)
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = year > 1970, clusters = pairid, fixed_effects = ~ year, se_type = "stata")
 summary(gravityMod)
 ```
 
-#### With Country Effects
+#### With Country Effects[^TODO]
 
 ```{r}
-gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp + factor(year) + factor(cty1) + factor(cty2), data=data4web, index=c("pairid", "year"), model = "pooling")
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, clusters = pairid, se_type = "stata", fixed_effects = ~year)
 summary(gravityMod)
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+```{r}
+gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data=data4web, index = c("pairid", "year"), model = "within", effect = "twoways")
+summary(gravityMod)
+```
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+It's unable to find evidence that membership in the GATT/WTO has had a strong positive effect on international trade. But since the GSP is associated with an approximate doubling of trade, it seems that the data (rather than the methodology) are delivering the negative message.
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+## Sensitivity Analysis
 
+### Cross-Sectional Analysis
+
+```{r}
+for (year_ in seq(from=1950, to=1995, by=5)) {
+    cat("\n\n", "year:", year_, "\n***************************************\n")
+    gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = year == year_, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+    print(summary(gravityMod))
+}
+```
+
+It is possible to find positive significant effects of GATT/WTO membership on trade, if one looks carefully; the data from the 1950's show positive and significant effects of GATT membership. However, these coefficients shrink in the 1960's with the large expansion of the GATT and turn negative in the 1970's. The effects are also small in the 1980's and unstable in the 1990's.
+
+### Allowing the Effects to Vary Over GATT Rounds[^TODO]
+
+```{r}
+# gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = year < 1949, index = c("pairid", "year"), effect = "time", model = "within")
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = year >= 1949 & year < 1951, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+There is clearly (statistically and economically) significant variation in the coefficients across trade rounds. Nevertheless, it is striking that the only economically large effects are estimated for the first one or two rounds, and most of these are statistically insignificant. Cognoscenti may prefer the fixed-effects estimation shown at the right of the table that focus even more exclusively on time-series variation, since any features which are constant over time for a pair of countries (such as geography, culture, and history) are taken out. Yet these “within” estimates are economically moderate, often insignificant and sometimes negative.
+
+### Allowing the Effects to vary by Region and Income Class
+
+A different issue is whether the effects of GATT/WTO membership have varied over time.
+
+#### South Asia
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = sasia1 == 1 | sasia2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### East Asia
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = easia1 == 1 | easia2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### Sub-Saharan Africa
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = ssafr1 == 1 | ssafr2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### Middle East or North Africa
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = menaf1 == 1 | menaf2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### Latin America or Caribbean
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = latca1 == 1 | latca2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### Hight Income
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = highi1 == 1 | highi2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### Middle Income[^Error]
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = midin1 == 1 | midin2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### Low Income
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = lowin1 == 1 | lowin2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+#### Least Developed
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = least1 == 1 | least2 == 1, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+The GSP estimates remain economically and statistically significant throughout; but GATT/ WTO membership seems to have a negligible (often negative) effect. The only exception is trade for South Asia, where the GATT/WTO effect is economically large but statistically marginal.
+
+### Further Robustness Checks
+
+#### Sample Sensitivity Analysis
+
+##### Data before 1980
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = year < 1980, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+##### Data after 1979
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = year >= 1980, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+##### Only Industrial Countries
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, subset = cty1<200 & cty2<200, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+// TODO: MORE TO BE DONE
+
+##### With Quadratic Gravity Terms[^TODO]
+
+Add quadratic gravity terms as nuisance variables, since some authors have found these terms important.
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp + ldist^2 + lrgdp^2 + lrgdppc^2, data = data4web, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+##### Without Year Effects
+
+Drop the set of year dummies.
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+##### Dis-aggregated Regional Trade Agreements
+
+Record the coefficients when each of the ten regional trade agreements is allowed to have its own separate effect on trade.
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp + factor(rta), data = data4web, fixed_effects = ~ year,  clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+##### Controlling for Aggregate Third-country Trade
+
+Include (the log of) aggregate trade from either country to the rest of the world (excluding the bilateral trade between the pair).
+
+// TODO: Need to calculate aggregate third-country trade data.
+
+#### Estimation Sensitivity Analysis
+
+##### 5-year Averages
+
+Reestimate everything using five-year averages in place of annual observations.
+
+// TODO: Need to calculate average data.
+
+##### Random-effects(GLS) Estimator and Fixed-effects (within) Estimator[^TODO][^STATA]
+
+* Without time effects.
+* With time effects.
+
+Tabulate the results of panel estimators that treat country-pairs as both random and fixed effects (there are two sets of estimates; one without year effects, and another with year effects).
+
+```{r}
+gravityMod <- plm(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, index = c("pairid", "year"), effect = "twoways", model = "random")
+summary(gravityMod)
+```
+
+##### Treatment MLE
+
+* Both members vs. neither
+* One member vs. neither
+
+The first compares trade when both countries are GATT/WTO members to the case where neither is; the second compares trade between nonmembers and the case where just one of the countries is a GATT/WTO member. These estimates are of particular interest since small poor countries are less likely to trade and also less likely to be GATT/WTO members. The treatment methodology attempts to correct for this selection bias, yet it delivers even more negative results.
+
+##### Median Regression, Weighted Least Squares, Tobit
+
+Tabulate coefficients estimated from weighted least squares (using real GDP as weights), a robust median estimator, and a Tobit estimator (since trade cannot be negative).
+
+##### With Lagged Dependent Variable and Arellano-Bond Dynamic Panel
+
+Adding a lag of the dependent variable in two different ways:
+
+1. OLS with year effects.
+2. the Arellano-Bond panel GMM estimator.
+
+Adding the lagged dependent variable with OLS has little effect on the primary coefficients of interest, which remain negative. Nevertheless, the lagged dependent variable itself is highly significant with a coefficient of 0.81. This leads one to suspect that **dynamic effects** could be important. After all, effective entry into the multilateral trading system may take time. Still, **it is striking that none of the robustness checks above deliver economically substantial effects of the GATT or WTO on trade**.
+
+#### Dynamic Analysis
+
+To the basic model the author add in the extreme left, a set of dummy variables which are unity if either i or j entered the GATT/WTO 5, 10, 15, or 20 years ago.
+
+```{r}
+data4web$maxyrs5 <- ifelse(data4web$maxyrs >= 5, 1, 0)
+data4web$maxyrs10 <- ifelse(data4web$maxyrs >= 10, 1, 0)
+data4web$maxyrs15 <- ifelse(data4web$maxyrs >= 15, 1, 0)
+data4web$maxyrs20 <- ifelse(data4web$maxyrs >= 20, 1, 0)
+
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp + maxyrs5 + maxyrs10 + maxyrs15 + maxyrs20, data = data4web, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+
+The coefficients are positive and significant, possibly indicating a delayed effect of membership on trade, consistent with the notion that the effects of membership are slowly phased in. On the other hand, this may simply indicate highly persistent serially correlated disturbances.
+
+##### Prais-Winsten Estimator
+
+```{r}
+gravityMod <- prais_winsten(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, index = c("pairid", "year"))
+summary(gravityMod)
+```
+
+The Prais-Winsten estimates show small effects of the GATT/WTO both contemporaneously and including lags, so long as the (considerable) serial correlation is accounted for.
+
+### More Positive Results
+
+#### Perturbation
+
+Drop the augmenting regressors, leaving only a stripped-down gravity model.
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + bothin + onein + gsp, data = data4web, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+This barely alters the key coefficients (or the fit of the model).
+
+If drop the essential gravity variables- distance and output- from the model, can estimate a highly significant positive effect of GATT/WTO membership on trade:
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ bothin + onein + gsp, data = data4web, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+That is, the GATT/WTO seems to have a huge effect on trade if one does not hold other things constant; the multilateral trade regime matters, ceteris non paribus. **Simply taking into account standard gravity effects essentially eradicates any large effect of the GATT/WTO on bilateral trade.**
+
+```{r}
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + found1 + found2 + minyrs + maxyrs + gsp, data = data4web, fixed_effects = ~ year, clusters = pairid, se_type = "stata")
+summary(gravityMod)
+```
+
+
+[^TODO]: Unconsistent with the paper
+[^Error]: Due to data error, the result is not correct(http://faculty.haas.berkeley.edu/arose/ERRORWTO.htm）
+[^STATA]: Reproduced with Stata
