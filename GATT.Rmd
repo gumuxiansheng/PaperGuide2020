@@ -9,6 +9,8 @@ Data is provided by the author at http://faculty.haas.berkeley.edu/arose/RecRes.
 
 ## Read In Data
 ```{r}
+options(warn = -1)
+library(haven)
 data4web <- read_dta("./data4web.dta")
 ```
 
@@ -19,7 +21,6 @@ head(data4web)
 
 ## Correlation
 ```{r}
-options(warn = -1)
 data4web_corr <- cor(data4web[c("ltrade", "ldist", "lrgdp", "lrgdppc", "comlang", "border", "landl", "island", "lareap", "comcol", "curcol", "colony", "comctry", "custrict", "regional", "bothin", "onein", "gsp")], method = "pearson")
 library(corrplot)
 corrplot(data4web_corr)
@@ -84,7 +85,7 @@ summary(gravityMod)
 #### With Country Effects[^TODO]
 
 ```{r}
-gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, clusters = pairid, se_type = "stata", fixed_effects = ~year)
+gravityMod <- lm_robust(ltrade ~ ldist + lrgdp + lrgdppc + comlang + border + landl + island + lareap + comcol + curcol + colony + comctry + custrict + regional + bothin + onein + gsp, data = data4web, clusters = pairid, se_type = "stata", fixed_effects = ~ year)
 summary(gravityMod)
 ```
 
